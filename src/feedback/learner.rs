@@ -260,7 +260,7 @@ impl StrategyLearner {
             total_samples: total,
             success_rate: successes as f64 / total as f64,
             avg_quality_score: avg_score,
-            avg_temperature: avg_temp,
+            avg_temperature: avg_temp as f64,
         })
     }
 

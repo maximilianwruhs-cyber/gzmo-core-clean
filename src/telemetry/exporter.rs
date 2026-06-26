@@ -27,7 +27,7 @@ impl MetricExporter {
 
     fn to_json(&self, snapshot: &MetricSnapshot) -> String {
         format!(
-            r#"{{"timestamp":{},"escape_rate":{:.4},"efficiency":{:.4},"avg_latency_ms":{},"total_tokens":{},"total_generations":{}}"#,
+            r#"{{"timestamp":{},"escape_rate":{:.4},"efficiency":{:.4},"avg_latency_ms":{},"total_tokens":{},"total_generations":{}}}"#,
             snapshot.timestamp,
             snapshot.escape_rate,
             snapshot.efficiency,

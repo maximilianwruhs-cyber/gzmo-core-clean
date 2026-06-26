@@ -1,0 +1,8 @@
+/home/maximilian-wruhs/Projects/_foundation-audit/survey_GZMO/gzmo-core-clean/target/debug/deps/ucd_trie-b63cef7ddfe63556.d: /home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ucd-trie-0.1.7/src/lib.rs /home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ucd-trie-0.1.7/src/owned.rs
+
+/home/maximilian-wruhs/Projects/_foundation-audit/survey_GZMO/gzmo-core-clean/target/debug/deps/libucd_trie-b63cef7ddfe63556.rlib: /home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ucd-trie-0.1.7/src/lib.rs /home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ucd-trie-0.1.7/src/owned.rs
+
+/home/maximilian-wruhs/Projects/_foundation-audit/survey_GZMO/gzmo-core-clean/target/debug/deps/libucd_trie-b63cef7ddfe63556.rmeta: /home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ucd-trie-0.1.7/src/lib.rs /home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ucd-trie-0.1.7/src/owned.rs
+
+/home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ucd-trie-0.1.7/src/lib.rs:
+/home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ucd-trie-0.1.7/src/owned.rs:

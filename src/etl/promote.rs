@@ -35,16 +35,16 @@ impl Promoter {
     }
 
     /// Promote an extraction to storage
-    pub fn promote<V, Vec, E1, E2>(
+    pub fn promote<V, VS, E1, E2>(
         &mut self,
         extraction: &Extraction,
         vault: &mut V,
-        vectors: &mut Vec,
+        vectors: &mut VS,
         embedding: Option<&[f32]>,
     ) -> PromotionResult
     where
         V: Vault<Error = E1>,
-        Vec: VectorStore<Error = E2>,
+        VS: VectorStore<Error = E2>,
         E1: std::error::Error,
         E2: std::error::Error,
     {
@@ -52,8 +52,8 @@ impl Promoter {
             facts_promoted: 0,
             relations_promoted: 0,
             duplicates_skipped: 0,
-            promoted_ids: Vec::new(),
-            errors: Vec::new(),
+            promoted_ids: std::vec::Vec::new(),
+            errors: std::vec::Vec::new(),
         };
 
         for fact_content in &extraction.facts {
@@ -106,15 +106,15 @@ impl Promoter {
     }
 
     /// Batch promote multiple extractions
-    pub fn promote_batch<V, Vec, E1, E2>(
+    pub fn promote_batch<V, VS, E1, E2>(
         &mut self,
         extractions: &[Extraction],
         vault: &mut V,
-        vectors: &mut Vec,
-    ) -> Vec<PromotionResult>
+        vectors: &mut VS,
+    ) -> std::vec::Vec<PromotionResult>
     where
         V: Vault<Error = E1>,
-        Vec: VectorStore<Error = E2>,
+        VS: VectorStore<Error = E2>,
         E1: std::error::Error,
         E2: std::error::Error,
     {
@@ -152,12 +152,12 @@ mod tests {
         let mut vectors = InMemoryVectorStore::new();
 
         let extractor = Extractor::new();
-        let extraction = extractor.extract("Paris is the capital of France.");
+        let extraction = extractor.extract_heuristic("Paris is the capital of France.");
 
         let result = promoter.promote(&extraction, &mut vault, &mut vectors, None);
 
         assert!(result.facts_promoted > 0);
-        assert!(result.promoted_ids.len() > 0);
+        assert!(!result.promoted_ids.is_empty());
     }
 
     #[test]
@@ -170,6 +170,7 @@ mod tests {
             facts: vec!["unique fact".to_string()],
             relations: vec![],
             confidence: 0.9,
+            latency_ms: 0,
         };
 
         // First promotion

@@ -7,6 +7,6 @@ pub mod extract;
 pub mod verify;
 pub mod promote;
 
-pub use extract::{Extractor, Extraction};
+pub use extract::{Extractor, Extraction, Relation, ExtractorError};
 pub use verify::{Verifier, VerificationResult};
 pub use promote::{Promoter, PromotionResult};

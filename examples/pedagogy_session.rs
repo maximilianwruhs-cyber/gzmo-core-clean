@@ -14,12 +14,14 @@ fn main() {
         student_id: "student_001".to_string(),
         max_interactions: 5,
         initial_level: KnowledgeLevel::Novice,
+        llm_endpoint: "http://localhost:8000/v1/chat/completions".to_string(),
+        llm_model: "local-model".to_string(),
     });
 
     println!("Session ID: {}", session.id);
     println!("Subject: {}\n", session.subject);
 
-    // Simulate student interactions
+    // Simulate student interactions using sync method
     let student_inputs = vec![
         "What is a derivative?",
         "I don't understand the concept of limits.",
@@ -29,7 +31,7 @@ fn main() {
     for input in student_inputs {
         println!("Student: {}", input);
 
-        let result = session.interact(input);
+        let result = session.interact_sync(input);
 
         match result {
             SessionResult::Response { text, meta, remaining_interactions } => {
@@ -54,4 +56,5 @@ fn main() {
     println!("  Tutor questions: {}", stats.tutor_questions);
     println!("  Average cognitive load: {}", stats.avg_cognitive_load);
     println!("  Average latency: {}ms", stats.avg_latency_ms);
+    println!("  Total LLM calls: {}", stats.total_llm_calls);
 }

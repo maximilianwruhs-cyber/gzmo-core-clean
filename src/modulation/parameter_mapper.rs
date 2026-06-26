@@ -6,6 +6,7 @@
 use crate::modulation::state_generator::StateGenerator;
 
 /// Maps generator state to LLM API parameters
+#[derive(Debug, Clone)]
 pub struct ParameterMapper {
     temp_min: f32,
     temp_max: f32,
@@ -52,10 +53,10 @@ impl ParameterMapper {
         let z = gen.normalized_z();
 
         LLMParameters {
-            temperature: self.temp_min + x * (self.temp_max - self.temp_min),
+            temperature: self.temp_min + (x as f32) * (self.temp_max - self.temp_min),
             max_tokens: (self.max_tokens_min as f64 + y * (self.max_tokens_max - self.max_tokens_min) as f64)
                 as u32,
-            top_p: self.top_p_min + z * (self.top_p_max - self.top_p_min),
+            top_p: self.top_p_min + (z as f32) * (self.top_p_max - self.top_p_min),
         }
     }
 

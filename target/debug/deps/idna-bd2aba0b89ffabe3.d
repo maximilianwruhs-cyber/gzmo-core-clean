@@ -1,0 +1,10 @@
+/home/maximilian-wruhs/Projects/_foundation-audit/survey_GZMO/gzmo-core-clean/target/debug/deps/idna-bd2aba0b89ffabe3.d: /home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/lib.rs /home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/deprecated.rs /home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/punycode.rs /home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/uts46.rs
+
+/home/maximilian-wruhs/Projects/_foundation-audit/survey_GZMO/gzmo-core-clean/target/debug/deps/libidna-bd2aba0b89ffabe3.rlib: /home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/lib.rs /home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/deprecated.rs /home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/punycode.rs /home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/uts46.rs
+
+/home/maximilian-wruhs/Projects/_foundation-audit/survey_GZMO/gzmo-core-clean/target/debug/deps/libidna-bd2aba0b89ffabe3.rmeta: /home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/lib.rs /home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/deprecated.rs /home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/punycode.rs /home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/uts46.rs
+
+/home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/lib.rs:
+/home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/deprecated.rs:
+/home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/punycode.rs:
+/home/maximilian-wruhs/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/uts46.rs:

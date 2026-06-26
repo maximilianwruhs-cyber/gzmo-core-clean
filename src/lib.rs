@@ -48,9 +48,15 @@ pub mod cli;
 
 // Re-export commonly used types
 pub use modulation::{StateGenerator, ParameterMapper, LLMParameters, AdaptiveTempo};
-pub use feedback::{RepetitionDetector, OutputEvaluator, StrategyLearner, PatternState};
-pub use pedagogy::{StudentEvaluator, SocraticTutor, Session, SessionConfig};
-pub use storage::{Vault, VectorStore, DuplicateDetector, Fact, FactRelation};
+pub use feedback::{
+    RepetitionDetector, OutputEvaluator, StrategyLearner, PatternState,
+    SelfImprovingLoop, CycleResult, LoopStats, LearningStrategy
+};
+pub use pedagogy::{StudentEvaluator, SocraticTutor, Session, SessionConfig, KnowledgeLevel, StudentState};
+pub use storage::{Vault, VectorStore, DuplicateDetector, Fact, FactRelation, SqliteVault};
+pub use gateway::{LlmClient, LlmRequest, LlmResponse};
+pub use config::{Config, load_from_file, save_to_file, generate_default_config};
+pub use skills::{SkillRegistry, Dispatcher, Invocation, InvocationResult, SkillResult, execute};
 
 /// Version of this crate
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -37,6 +37,11 @@ impl FactRelation {
     pub fn is_duplicate(&self) -> bool {
         matches!(self, Self::Duplicate)
     }
+
+    /// Is this novel (not a duplicate)
+    pub fn is_novel(&self) -> bool {
+        matches!(self, Self::Novel)
+    }
 }
 
 impl DuplicateDetector {

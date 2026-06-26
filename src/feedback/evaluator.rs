@@ -141,7 +141,7 @@ impl OutputEvaluator {
         let ngrams = self.hash_ngrams(text);
         let ngram_set: HashSet<_> = ngrams.iter().copied().collect();
 
-        let mut max_similarity = 0.0;
+        let mut max_similarity: f64 = 0.0;
         for hist_ngrams in &self.history {
             let hist_set: HashSet<_> = hist_ngrams.iter().copied().collect();
 

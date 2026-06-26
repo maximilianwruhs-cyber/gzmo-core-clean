@@ -7,6 +7,6 @@ pub mod registry;
 pub mod dispatch;
 pub mod builtin;
 
-pub use registry::{SkillRegistry, Skill, SkillError};
+pub use registry::{SkillRegistry, Skill, SkillCategory, Parameter, SkillError};
 pub use dispatch::{Dispatcher, Invocation, InvocationResult};
-pub use builtin::Builtins;
+pub use builtin::{Builtins, SkillResult, execute};

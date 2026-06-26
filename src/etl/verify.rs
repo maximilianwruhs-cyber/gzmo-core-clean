@@ -118,6 +118,7 @@ mod tests {
             facts: vec!["Paris is capital of France".to_string()],
             relations: vec![],
             confidence: 0.9,
+            latency_ms: 0,
         };
         let result = verifier.verify(&extraction);
         assert!(result.passed);
@@ -130,6 +131,7 @@ mod tests {
             facts: vec!["test".to_string()],
             relations: vec![],
             confidence: 0.1,
+            latency_ms: 0,
         };
         let result = verifier.verify(&extraction);
         assert!(!result.passed);
@@ -142,6 +144,7 @@ mod tests {
             facts: vec!["It depends on stuff".to_string()],
             relations: vec![],
             confidence: 0.8,
+            latency_ms: 0,
         };
         let result = verifier.verify(&extraction);
         assert!(!result.passed);
@@ -155,6 +158,7 @@ mod tests {
             facts: vec![],
             relations: vec![],
             confidence: 0.9,
+            latency_ms: 0,
         };
         let result = verifier.verify(&extraction);
         assert!(!result.passed);

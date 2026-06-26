@@ -12,8 +12,10 @@ pub mod detector;
 pub mod evaluator;
 pub mod learner;
 pub mod queue;
+pub mod self_improving_loop;
 
 pub use detector::{PatternState, RepetitionDetector};
 pub use evaluator::{QualityMetrics, OutputEvaluator};
 pub use learner::{Experience, LearningStrategy, StrategyLearner, ParameterRecommendation, LearnerStats};
 pub use queue::{ParameterRequest, ParameterTarget, ParameterMutationQueue, AppliedMutation, QueueResult};
+pub use self_improving_loop::{SelfImprovingLoop, CycleResult, LoopStats, SelfImprovingError};

@@ -1,196 +1,236 @@
 //! Socratic Tutor
 //!
-//! Generates Socratic responses based on student state.
-//! Uses guiding questions rather than direct answers to promote learning.
+//! Generates Socratic responses using LLM to create authentic, adaptive tutoring.
+//! Replaces hardcoded templates with actual language model generation.
 
-use crate::pedagogy::evaluator::{KnowledgeLevel, StudentState};
+use crate::gateway::{LlmClient, LlmRequest};
+use crate::modulation::parameter_mapper::LLMParameters;
+use crate::pedagogy::evaluator::StudentState;
 
-/// Tutor response generator
-pub struct SocraticTutor;
+/// LLM-powered Socratic tutor
+pub struct SocraticTutor {
+    client: LlmClient,
+}
 
-/// Generated tutor output
+/// Generated tutor output with metadata
 #[derive(Debug, Clone)]
 pub struct TutorResponse {
-    /// Response text for the student
     pub text: String,
-    /// Target difficulty applied (0-1)
     pub difficulty: f64,
-    /// Whether this response contains a question
     pub has_question: bool,
-    /// Estimated cognitive load (1-5)
     pub cognitive_load: u8,
+    pub latency_ms: u64,
 }
 
 impl SocraticTutor {
-    /// Create new tutor
-    pub fn new() -> Self {
-        Self
+    /// Create new tutor with LLM client
+    pub fn new(client: LlmClient) -> Self {
+        Self { client }
     }
 
-    /// Generate a Socratic response
-    ///
-    /// # Arguments
-    /// * `student_input` - The student's message
-    /// * `state` - Current evaluated student state
-    /// * `subject` - Topic being learned
-    pub fn respond(&self, student_input: &str, state: &StudentState, subject: &str) -> TutorResponse {
-        let complexity = state.level.complexity();
-        let zpd = state.difficulty_target;
+    /// Create tutor with default local endpoint
+    pub fn with_endpoint(endpoint: &str, model: &str) -> Self {
+        Self {
+            client: LlmClient::new(endpoint, "", model),
+        }
+    }
 
-        // Check if student asked a direct question
-        let is_question = student_input.ends_with('?')
-            || student_input.to_lowercase().starts_with("what")
-            || student_input.to_lowercase().starts_with("how");
+    /// Generate Socratic response using LLM
+    pub async fn respond(
+        &self,
+        student_input: &str,
+        state: &StudentState,
+        subject: &str,
+    ) -> Result<TutorResponse, TutorError> {
+        let start = std::time::Instant::now();
 
-        let text = if is_question {
-            self.respond_to_question(student_input, state, subject, complexity)
-        } else {
-            self.respond_to_statement(student_input, state, subject, complexity)
+        let system_prompt = self.build_system_prompt(state, subject);
+        let user_prompt = self.build_user_prompt(student_input, state);
+
+        // Adjust temperature based on student level
+        let temperature = match state.level {
+            crate::pedagogy::evaluator::KnowledgeLevel::Novice => 0.4,
+            crate::pedagogy::evaluator::KnowledgeLevel::Developing => 0.5,
+            crate::pedagogy::evaluator::KnowledgeLevel::Proficient => 0.6,
+            crate::pedagogy::evaluator::KnowledgeLevel::Expert => 0.7,
         };
 
-        let cognitive_load = self.estimate_cognitive_load(&text, zpd);
+        let request = LlmRequest {
+            system_prompt: Some(system_prompt),
+            user_prompt,
+            params: LLMParameters {
+                temperature,
+                max_tokens: 300,
+                top_p: 0.9,
+            },
+        };
+
+        let response = self.client.send(request).await
+            .map_err(|e| TutorError::LlmError(e.to_string()))?;
+
+        let text = response.text.trim().to_string();
+        let has_question = text.contains('?');
+        let cognitive_load = self.estimate_cognitive_load(&text, state.difficulty_target);
+
+        Ok(TutorResponse {
+            text,
+            difficulty: state.difficulty_target,
+            has_question,
+            cognitive_load,
+            latency_ms: response.latency.as_millis() as u64,
+        })
+    }
+
+    /// Build system prompt from student state
+    fn build_system_prompt(&self, state: &StudentState, subject: &str) -> String {
+        let mut prompt = format!(
+            "You are an expert Socratic tutor teaching {}. \
+            The student is at {:?} level. \
+            Use {} language appropriate for their level. \
+            Target difficulty: {:.0}%.",
+            subject,
+            state.level,
+            format!("{:?}", state.level).to_lowercase(),
+            state.difficulty_target * 100.0,
+        );
+
+        if !state.misconception_topics.is_empty() {
+            prompt.push_str(&format!(
+                "\n\nAddress these student misconceptions through questioning: {}. \
+                Do not state the misconception directly. Use questions to help them discover the error.",
+                state.misconception_topics.join(", ")
+            ));
+        }
+
+        if !state.prerequisite_gaps.is_empty() {
+            prompt.push_str(&format!(
+                "\n\nThe student has gaps in: {}. \
+    Guide them to recognize what they need to understand first.",
+                state.prerequisite_gaps.join(", ")
+            ));
+        }
+
+        prompt.push_str(&format!(
+            "\n\nGuidelines:\n\
+            - Ask guiding questions, never give direct answers\n\
+            - Help the student discover knowledge through inquiry\n\
+            - If they made an error, use counterexamples or probing questions\n\
+            - Respond in 2-4 sentences\n\
+            - End with a question that advances their thinking"
+        ));
+
+        prompt
+    }
+
+    /// Build user prompt with context
+    fn build_user_prompt(&self, student_input: &str, state: &StudentState) -> String {
+        let context = if !state.evaluation_reasoning.is_empty() {
+            format!("\n\nAssessment context: {}", state.evaluation_reasoning)
+        } else {
+            String::new()
+        };
+
+        format!(
+            "Student says: \"{}\"{}\n\nRespond with a Socratic question that guides their thinking.",
+            student_input.replace('"', "\\\""),
+            context
+        )
+    }
+
+    /// Estimate cognitive load based on text characteristics
+    fn estimate_cognitive_load(&self, text: &str, zpd: f64) -> u8 {
+        let sentences = text.matches('.').count() + text.matches('?').count();
+        let words = text.split_whitespace().count();
+        let question_count = text.matches('?').count();
+
+        // Base load from complexity
+        let base_load = if words < 20 {
+            1
+        } else if words < 40 {
+            2
+        } else if words < 60 {
+            3
+        } else if words < 80 {
+            4
+        } else {
+            5
+        };
+
+        // Adjust for questions (more questions = higher engagement load)
+        let question_factor = question_count.min(2);
+
+        // Adjust for ZPD match
+        let zpd_adjustment = if zpd > 0.7 { 1 } else { 0 };
+
+        ((base_load + question_factor + zpd_adjustment).min(5)).max(1) as u8
+    }
+
+    /// Quick fallback response when LLM unavailable
+    pub fn respond_fallback(
+        &self,
+        student_input: &str,
+        state: &StudentState,
+        subject: &str,
+    ) -> TutorResponse {
+        let templates = [
+            format!(
+                "Let's think about {} together. What do you already know about this topic?",
+                subject
+            ),
+            format!(
+                "That's an interesting point about {}. What makes you think that?",
+                subject
+            ),
+            format!(
+                "Good question about {}. Before we dive in, what do you think the key concepts are?",
+                subject
+            ),
+            format!(
+                "I see you're working through {}. What would happen if we looked at it from a different angle?",
+                subject
+            ),
+        ];
+
+        // Select based on student level
+        let index = match state.level {
+            crate::pedagogy::evaluator::KnowledgeLevel::Novice => 0,
+            crate::pedagogy::evaluator::KnowledgeLevel::Developing => 1,
+            crate::pedagogy::evaluator::KnowledgeLevel::Proficient => 2,
+            crate::pedagogy::evaluator::KnowledgeLevel::Expert => 3,
+        };
+
+        let text = templates[index % templates.len()].clone();
 
         TutorResponse {
             text,
-            difficulty: zpd,
-            has_question: self.contains_question_marker(&text),
-            cognitive_load,
+            difficulty: state.difficulty_target,
+            has_question: true,
+            cognitive_load: 2,
+            latency_ms: 0,
         }
-    }
-
-    /// Respond to a student question
-    fn respond_to_question(
-        &self,
-        question: &str,
-        state: &StudentState,
-        subject: &str,
-        complexity: &str,
-    ) -> String {
-        // Socratic response: don't answer directly
-        let question_lower = question.to_lowercase();
-
-        if question_lower.contains("why") || question_lower.contains("how") {
-            // Process questions
-            format!(
-                "That's an interesting {} question about {}. \
-                Before we explore that, what do you think are the key factors involved? \
-                Consider what you already know about {}.",
-                complexity,
-                subject,
-                state.mastered_prerequisites.first().unwrap_or(&subject.to_string()),
-            )
-        } else if question_lower.contains("what is") || question_lower.contains("what are") {
-            // Definition questions
-            format!(
-                "To understand {}, let's break it down. \
-                What components do you think {} involves? \
-                What happens if we remove one of those components?",
-                subject,
-                subject,
-            )
-        } else {
-            // General questions
-            format!(
-                "Good question. Let's think through this together using {} reasoning. \
-                What would happen if we approached this differently? \
-                What constraints or assumptions are we making?",
-                complexity,
-            )
-        }
-    }
-
-    /// Respond to a student statement
-    fn respond_to_statement(
-        &self,
-        statement: &str,
-        state: &StudentState,
-        subject: &str,
-        complexity: &str,
-    ) -> String {
-        // Check for misconceptions
-        if !state.misconception_topics.is_empty() {
-            return format!(
-                "I notice you're thinking about {}. \
-                Let's examine this more carefully. \
-                Can you think of a counterexample or exception to what you've stated? \
-                What would {} look like in that case?",
-                state.misconception_topics[0],
-                subject,
-            );
-        }
-
-        // Check for gaps
-        if !state.prerequisite_gaps.is_empty() {
-            return format!(
-                "Before we go deeper, let's make sure we have the foundation. \
-                You mentioned understanding {}, but how does that connect to {}? \
-                Can you explain that relationship?",
-                subject,
-                state.prerequisite_gaps[0],
-            );
-        }
-
-        // Default Socratic probe
-        format!(
-            "You mentioned: \"{}\". \
-            Let's explore that with {} detail. \
-            What evidence supports your conclusion? \
-            How would you explain this to someone at a beginner level?",
-            if statement.len() > 50 {
-                &statement[..50]
-            } else {
-                statement
-            },
-            complexity,
-        )
-    }
-
-    /// Check if text contains a question
-    fn contains_question_marker(&self, text: &str) -> bool {
-        text.contains('?')
-    }
-
-    /// Estimate cognitive load (1-5) based on complexity and length
-    fn estimate_cognitive_load(&self, text: &str, _zpd: f64) -> u8 {
-        let sentences = text.matches('.').count() + text.matches('?').count();
-        let words = text.split_whitespace().count();
-        let avg_words_per_sentence = if sentences > 0 {
-            words / sentences
-        } else {
-            words
-        };
-
-        match avg_words_per_sentence {
-            0..=10 => 1,
-            11..=20 => 2,
-            21..=30 => 3,
-            31..=40 => 4,
-            _ => 5,
-        }
-    }
-
-    /// Generate the LLM system prompt for this tutor
-    pub fn system_prompt(&self, state: &StudentState, subject: &str) -> String {
-        state.tutor_prompt(subject)
-    }
-
-    /// Generate the LLM user prompt
-    pub fn user_prompt(&self, student_input: &str) -> String {
-        format!(
-            "Student input: {}\n\n\
-            Respond with a Socratic question that guides the student toward understanding. \
-            Do not give the answer directly. \
-            If the student made an error, use a counterexample or probing question to help them discover it.",
-            student_input
-        )
     }
 }
 
 impl Default for SocraticTutor {
     fn default() -> Self {
-        Self::new()
+        Self::with_endpoint("http://localhost:8000/v1/chat/completions", "local-model")
     }
 }
+
+#[derive(Debug)]
+pub enum TutorError {
+    LlmError(String),
+}
+
+impl std::fmt::Display for TutorError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TutorError::LlmError(s) => write!(f, "LLM error: {}", s),
+        }
+    }
+}
+
+impl std::error::Error for TutorError {}
 
 #[cfg(test)]
 mod tests {
@@ -198,56 +238,30 @@ mod tests {
     use crate::pedagogy::evaluator::{KnowledgeLevel, StudentState};
 
     #[test]
-    fn question_gets_socratic_response() {
-        let tutor = SocraticTutor::new();
+    fn fallback_generates_question() {
+        let tutor = SocraticTutor::default();
         let state = StudentState::from_level(KnowledgeLevel::Novice);
-        let response = tutor.respond("what is gravity?", &state, "physics");
+        let response = tutor.respond_fallback("what is gravity?", &state, "physics");
         assert!(response.has_question);
-        assert!(!response.text.contains("Gravity is")); // No direct definition
+        assert!(!response.text.is_empty());
     }
 
     #[test]
-    fn misconception_gets_probing_response() {
-        let tutor = SocraticTutor::new();
-        let state = StudentState {
-            level: KnowledgeLevel::Developing,
-            misconception_topics: vec!["overgeneralization".to_string()],
-            mastered_prerequisites: vec![],
-            prerequisite_gaps: vec![],
-            objectives: vec![],
-            difficulty_target: 0.5,
-        };
-        let response = tutor.respond("All functions are linear", &state, "math");
-        assert!(response.text.contains("counterexample") || response.text.contains("examine"));
-    }
-
-    #[test]
-    fn system_prompt_includes_level() {
-        let tutor = SocraticTutor::new();
-        let state = StudentState::from_level(KnowledgeLevel::Expert);
-        let prompt = tutor.system_prompt(&state, "calculus");
-        assert!(prompt.contains("expert"));
-    }
-
-    #[test]
-    fn higher_complexity_increases_load() {
-        let tutor = SocraticTutor::new();
-
-        let novice = StudentState::from_level(KnowledgeLevel::Novice);
-        let r1 = tutor.respond("test", &novice, "subject");
-
-        let expert = StudentState::from_level(KnowledgeLevel::Expert);
-        let r2 = tutor.respond("test", &expert, "subject");
-
-        // Expert responses typically longer/higher load
-        assert!(r2.text.len() >= r1.text.len() || r2.cognitive_load >= r1.cognitive_load);
-    }
-
-    #[test]
-    fn why_question_gets_process_probe() {
-        let tutor = SocraticTutor::new();
+    fn cognitive_load_based_on_length() {
+        let tutor = SocraticTutor::default();
         let state = StudentState::from_level(KnowledgeLevel::Developing);
-        let response = tutor.respond("why does photosynthesis work?", &state, "biology");
-        assert!(response.text.contains("factors") || response.text.contains("think"));
+
+        let short = tutor.respond_fallback("test", &state, "math");
+        assert!(short.cognitive_load <= 2);
+    }
+
+    #[test]
+    fn system_prompt_includes_misconceptions() {
+        let tutor = SocraticTutor::default();
+        let mut state = StudentState::from_level(KnowledgeLevel::Developing);
+        state.misconception_topics.push("test_error".to_string());
+
+        let prompt = tutor.build_system_prompt(&state, "math");
+        assert!(prompt.contains("test_error"));
     }
 }

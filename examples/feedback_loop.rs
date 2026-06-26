@@ -22,7 +22,7 @@ fn main() {
     println!("Processing outputs with repetition detection:\n");
 
     for (i, output) in outputs.iter().enumerate() {
-        let state = detector.add_output(output);
+        let state = detector.add_output(*output);
 
         let action = match state {
             PatternState::Novel => "Process normally",

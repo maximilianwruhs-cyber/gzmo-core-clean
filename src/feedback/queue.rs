@@ -138,14 +138,14 @@ impl ParameterMutationQueue {
             .collect();
 
         let mut applied = Vec::with_capacity(ready.len());
-        let mut dropped = 0;
+        let dropped;
 
         // Apply in priority order, batching similar targets
         let mut batch_targets: std::collections::HashMap<ParameterTarget, f64> =
             std::collections::HashMap::new();
 
         for idx in ready {
-            if let Some(mut mutation) = self.pending.get_mut(idx) {
+            if let Some(mutation) = self.pending.get_mut(idx) {
                 // Check if we can batch with existing
                 if let Some(existing) = batch_targets.get(&mutation.request.target) {
                     // Merge: add deltas
@@ -167,10 +167,10 @@ impl ParameterMutationQueue {
                 priority: 5,         // Average priority
                 batch_id: Some(self.tick as u32),
             };
-            applied.push(applied_mut);
-
-            // Add to history
+            // Add to history first
             self.applied.push(applied_mut.clone());
+            // Then add to result
+            applied.push(applied_mut);
         }
 
         // Remove applied/merged from pending
@@ -214,7 +214,7 @@ impl ParameterMutationQueue {
         let mut applied = Vec::with_capacity(self.pending.len());
 
         while let Some(queued) = self.pending.pop_front() {
-            let mut app = AppliedMutation {
+            let app = AppliedMutation {
                 target: queued.request.target,
                 delta: queued.request.delta,
                 applied_at_tick: self.tick,
@@ -222,8 +222,8 @@ impl ParameterMutationQueue {
                 priority: queued.request.priority,
                 batch_id: None,
             };
-            applied.push(app.clone());
-            self.applied.push(app);
+            self.applied.push(app.clone());
+            applied.push(app);
         }
 
         applied

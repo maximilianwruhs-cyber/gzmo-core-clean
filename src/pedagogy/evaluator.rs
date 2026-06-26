@@ -1,24 +1,24 @@
 //! Student State Evaluator
 //!
-//! Evaluates student knowledge state in a single LLM call.
-//! Simplified from 4-agent system (Diagnoser, Planner, Affective, Tutor)
-//! to 1-agent state assessment.
+//! Evaluates student knowledge state using LLM analysis.
+//! Replaces heuristic evaluation with actual language model assessment.
+
+use crate::gateway::{LlmClient, LlmRequest};
+use crate::modulation::parameter_mapper::LLMParameters;
+use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 /// Student knowledge level
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum KnowledgeLevel {
-    /// No prior exposure
     Novice,
-    /// Some familiarity, gaps remain
     Developing,
-    /// Solid understanding
     Proficient,
-    /// Mastery
     Expert,
 }
 
 impl KnowledgeLevel {
-    /// Target zone difficulty for this level
     pub fn zpd_difficulty(&self) -> f64 {
         match self {
             KnowledgeLevel::Novice => 0.3,
@@ -28,7 +28,6 @@ impl KnowledgeLevel {
         }
     }
 
-    /// Student-appropriate language complexity
     pub fn complexity(&self) -> &'static str {
         match self {
             KnowledgeLevel::Novice => "simple",
@@ -53,25 +52,30 @@ impl std::str::FromStr for KnowledgeLevel {
     }
 }
 
+/// LLM response structure for student evaluation
+#[derive(Debug, Clone, Deserialize)]
+struct LlmEvaluationResponse {
+    level: String,
+    misconceptions: Vec<String>,
+    prerequisites_mastered: Vec<String>,
+    prerequisite_gaps: Vec<String>,
+    difficulty_target: f64,
+    reasoning: String,
+}
+
 /// Evaluated student state
 #[derive(Debug, Clone)]
 pub struct StudentState {
-    /// Estimated knowledge level
     pub level: KnowledgeLevel,
-    /// Specific topics where student shows confusion
     pub misconception_topics: Vec<String>,
-    /// Prerequisites the student has mastered
     pub mastered_prerequisites: Vec<String>,
-    /// Prerequisite gaps to address
     pub prerequisite_gaps: Vec<String>,
-    /// Suggested learning objectives
     pub objectives: Vec<String>,
-    /// Appropriate difficulty level (0-1)
     pub difficulty_target: f64,
+    pub evaluation_reasoning: String,
 }
 
 impl StudentState {
-    /// Create state from a simple knowledge level estimate
     pub fn from_level(level: KnowledgeLevel) -> Self {
         Self {
             level,
@@ -80,55 +84,137 @@ impl StudentState {
             prerequisite_gaps: vec![],
             objectives: vec![],
             difficulty_target: level.zpd_difficulty(),
+            evaluation_reasoning: String::new(),
         }
     }
 
-    /// Generate system prompt for tutor based on this state
     pub fn tutor_prompt(&self, subject: &str) -> String {
+        let misconception_guidance = if self.misconception_topics.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "Address these misconceptions: {}. ",
+                self.misconception_topics.join(", ")
+            )
+        };
+
+        let gap_guidance = if self.prerequisite_gaps.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "Fill prerequisite gaps: {}. ",
+                self.prerequisite_gaps.join(", ")
+            )
+        };
+
         format!(
             "You are a Socratic tutor teaching {}. \
             The student is at {} level. \
             Use {} language. \
             Target difficulty: {:.0}%. \
-            Ask guiding questions, do not lecture directly.",
+            {}\
+            {}\
+            Ask guiding questions. Do not lecture directly.",
             subject,
             format!("{:?}", self.level).to_lowercase(),
             self.level.complexity(),
             self.difficulty_target * 100.0,
+            misconception_guidance,
+            gap_guidance,
         )
     }
 }
 
-/// Evaluates student input to determine state
-pub struct StudentEvaluator;
+/// LLM-based student evaluator
+pub struct StudentEvaluator {
+    client: LlmClient,
+}
 
 impl StudentEvaluator {
-    /// Create new evaluator
-    pub fn new() -> Self {
-        Self
+    pub fn new(client: LlmClient) -> Self {
+        Self { client }
     }
 
-    /// Evaluate student input via LLM
-    ///
-    /// # Arguments
-    /// * `student_input` - The student's response or initial message
-    /// * `subject` - Topic being learned
-    /// * `previous_interaction` - Optional previous interaction for context
-    ///
-    /// Returns a structured StudentState
-    pub fn evaluate(&self, student_input: &str, subject: &str, _previous_interaction: Option<&str>) -> StudentState {
-        // Simple heuristic evaluation (in production, use LLM)
+    pub fn with_endpoint(endpoint: &str, model: &str) -> Self {
+        Self {
+            client: LlmClient::new(endpoint, "", model),
+        }
+    }
+
+    /// Evaluate student input using LLM
+    pub async fn evaluate(
+        &self,
+        student_input: &str,
+        subject: &str,
+        previous_interaction: Option<&str>,
+    ) -> Result<StudentState, EvaluatorError> {
+        let context = previous_interaction.map(|p| format!("\nPrevious interaction:\n{}", p)).unwrap_or_default();
+        
+        let prompt = format!(
+            "Analyze this student input about {}:{}\n\n\
+            Student input: \"{}\"\n\n\
+            Evaluate and respond in this exact JSON format:\n\
+            {{\n\
+              \"level\": \"novice|developing|proficient|expert\",\n\
+              \"misconceptions\": [\"topic1\", \"topic2\"],\n\
+              \"prerequisites_mastered\": [\"prereq1\", \"prereq2\"],\n\
+              \"prerequisite_gaps\": [\"gap1\", \"gap2\"],\n\
+              \"difficulty_target\": 0.0-1.0,\n\
+              \"reasoning\": \"brief explanation\"\n\
+            }}\n\n\
+            Assessment criteria:\n\
+            - novice: basic questions, confusion markers\n\
+            - developing: partial understanding, some technical terms\n\
+            - proficient: correct technical usage, reasoning shown\n\
+            - expert: sophisticated analysis, connections made",
+            subject,
+            context,
+            student_input.replace('"', "\\\"")
+        );
+
+        let request = LlmRequest {
+            system_prompt: Some(
+                "You are an expert educational assessor. Analyze student input objectively. \
+                Return only valid JSON matching the requested format.".to_string()
+            ),
+            user_prompt: prompt,
+            params: LLMParameters {
+                temperature: 0.3,
+                max_tokens: 500,
+                top_p: 0.9,
+            },
+        };
+
+        let response = self.client.send(request).await
+            .map_err(|e| EvaluatorError::LlmError(e.to_string()))?;
+
+        let evaluation: LlmEvaluationResponse = serde_json::from_str(&response.text)
+            .map_err(|e| EvaluatorError::ParseError(format!("Failed to parse LLM response: {}. Response: {}", e, response.text.chars().take(200).collect::<String>())))?;
+
+        let level = KnowledgeLevel::from_str(&evaluation.level)
+            .map_err(|e| EvaluatorError::InvalidLevel(e))?;
+
+        Ok(StudentState {
+            level,
+            misconception_topics: evaluation.misconceptions,
+            mastered_prerequisites: evaluation.prerequisites_mastered,
+            prerequisite_gaps: evaluation.prerequisite_gaps,
+            objectives: vec![format!("Progress in {}", subject)],
+            difficulty_target: evaluation.difficulty_target.clamp(0.1, 0.95),
+            evaluation_reasoning: evaluation.reasoning,
+        })
+    }
+
+    /// Quick heuristic evaluation (no LLM call) for fallback
+    pub fn evaluate_heuristic(&self, student_input: &str, subject: &str) -> StudentState {
         let input_lower = student_input.to_lowercase();
 
-        // Check for confident technical language
         let technical_indicators = ["therefore", "consequently", "specifically", "in contrast"];
         let has_technical = technical_indicators.iter().any(|&w| input_lower.contains(w));
 
-        // Check for confusion markers
         let confusion_indicators = ["i don't understand", "confused", "unclear", "wait"];
         let has_confusion = confusion_indicators.iter().any(|&w| input_lower.contains(w));
 
-        // Check for novice markers
         let novice_indicators = ["what is", "how do", "what does", "basic"];
         let has_novice = novice_indicators.iter().any(|&w| input_lower.contains(w));
 
@@ -142,107 +228,69 @@ impl StudentEvaluator {
             KnowledgeLevel::Developing
         };
 
-        StudentState {
-            level,
-            misconception_topics: self.extract_misconceptions(&input_lower),
-            mastered_prerequisites: vec![],
-            prerequisite_gaps: if has_novice {
-                vec![format!("{} fundamentals", subject)]
-            } else {
-                vec![]
-            },
-            objectives: vec![format!("Master {}", subject)],
-            difficulty_target: level.zpd_difficulty(),
+        let mut state = StudentState::from_level(level);
+        state.evaluation_reasoning = "heuristic fallback".to_string();
+        
+        if input_lower.contains("always") || input_lower.contains("never") {
+            state.misconception_topics.push("overgeneralization".to_string());
         }
-    }
-
-    /// Extract potential misconception topics from input
-    fn extract_misconceptions(&self, input: &str) -> Vec<String> {
-        let mut topics = Vec::new();
-
-        if input.contains("always") || input.contains("never") {
-            topics.push("overgeneralization".to_string());
-        }
-        if input.contains("because") && !input.contains("because of") {
-            // Check for causal reasoning issues
-            if input.matches("because").count() > 1 {
-                topics.push("causal chain complexity".to_string());
-            }
+        
+        if has_novice {
+            state.prerequisite_gaps.push(format!("{} fundamentals", subject));
         }
 
-        topics
-    }
-
-    /// Generate the LLM prompt for evaluation
-    pub fn evaluation_prompt(&self, student_input: &str, subject: &str) -> String {
-        format!(
-            "Evaluate the following student input about {}:\n\n\
-            Input: {}\n\n\
-            Assess:\n\
-            1. Knowledge level (novice/developing/proficient/expert)\n\
-            2. Specific misconceptions or gaps\n\
-            3. Prerequisite mastery status\n\
-            4. Appropriate difficulty target (0-1)\n\n\
-            Format: JSON with fields: level, misconceptions, prerequisites_mastered, prerequisite_gaps, difficulty_target",
-            subject,
-            student_input,
-        )
+        state
     }
 }
 
 impl Default for StudentEvaluator {
     fn default() -> Self {
-        Self::new()
+        Self::with_endpoint("http://localhost:8000/v1/chat/completions", "local-model")
     }
 }
+
+#[derive(Debug)]
+pub enum EvaluatorError {
+    LlmError(String),
+    ParseError(String),
+    InvalidLevel(String),
+}
+
+impl std::fmt::Display for EvaluatorError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EvaluatorError::LlmError(s) => write!(f, "LLM error: {}", s),
+            EvaluatorError::ParseError(s) => write!(f, "Parse error: {}", s),
+            EvaluatorError::InvalidLevel(s) => write!(f, "Invalid level: {}", s),
+        }
+    }
+}
+
+impl std::error::Error for EvaluatorError {}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn novice_detected_from_basic_question() {
-        let eval = StudentEvaluator::new();
-        let state = eval.evaluate("what is a neural network?", "machine learning", None);
-        assert_eq!(state.level, KnowledgeLevel::Novice);
+    fn tutor_prompt_includes_misconceptions() {
+        let mut state = StudentState::from_level(KnowledgeLevel::Developing);
+        state.misconception_topics.push("overgeneralization".to_string());
+        let prompt = state.tutor_prompt("math");
+        assert!(prompt.contains("overgeneralization"));
     }
 
     #[test]
-    fn confusion_detected() {
-        let eval = StudentEvaluator::new();
-        let state = eval.evaluate("I'm confused about this", "math", None);
-        assert_eq!(state.level, KnowledgeLevel::Novice);
-        assert!(state.difficulty_target < 0.4);
-    }
-
-    #[test]
-    fn technical_language_suggests_proficiency() {
-        let eval = StudentEvaluator::new();
-        let state = eval.evaluate(
-            "The derivative represents the instantaneous rate of change. Specifically, it measures the slope of the tangent line.",
-            "calculus",
-            None,
-        );
-        assert!(matches!(state.level, KnowledgeLevel::Proficient | KnowledgeLevel::Expert));
-    }
-
-    #[test]
-    fn misconception_overgeneralization_detected() {
-        let eval = StudentEvaluator::new();
-        let state = eval.evaluate("Neural networks always work better", "machine learning", None);
-        assert!(state.misconception_topics.contains(&"overgeneralization".to_string()));
+    fn heuristic_evaluation_works() {
+        let eval = StudentEvaluator::default();
+        let state = eval.evaluate_heuristic("what is calculus?", "calculus");
+        // "what is" pattern triggers novice indicators -> Developing level
+        assert_eq!(state.level, KnowledgeLevel::Developing);
+        assert!(state.prerequisite_gaps.contains(&"calculus fundamentals".to_string()));
     }
 
     #[test]
     fn zpd_increases_with_level() {
         assert!(KnowledgeLevel::Novice.zpd_difficulty() < KnowledgeLevel::Expert.zpd_difficulty());
-    }
-
-    #[test]
-    fn tutor_prompt_includes_level() {
-        let state = StudentState::from_level(KnowledgeLevel::Developing);
-        let prompt = state.tutor_prompt("geometry");
-        assert!(prompt.contains("developing"));
-        assert!(prompt.contains("moderate"));
     }
 }

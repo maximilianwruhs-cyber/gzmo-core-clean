@@ -144,22 +144,25 @@ impl RepetitionDetector {
             return 0.0;
         }
 
-        let output_ngrams = extract_ngrams(output, 3);
-        let output_set: std::collections::HashSet<_> = output_ngrams.iter().collect();
+        let output_hashes: Vec<usize> = extract_ngrams(output, 3)
+            .iter()
+            .map(|g| hash_ngram(g))
+            .collect();
+        let output_set: std::collections::HashSet<_> = output_hashes.iter().collect();
 
-        let mut max_sim = 0.0;
+        let mut max_sim: f64 = 0.0;
         for (idx, hist) in self.history.iter().enumerate() {
             // Skip most recent (not yet cached)
             if idx == self.history.len() - 1 && self.ngram_cache.contains_key(hist) {
                 continue;
             }
 
-            let hist_ngrams = if let Some(cached) = self.ngram_cache.get(hist) {
+            let hist_hashes: Vec<usize> = if let Some(cached) = self.ngram_cache.get(hist) {
                 cached.clone()
             } else {
-                extract_ngrams(hist, 3)
+                extract_ngrams(hist, 3).iter().map(|g| hash_ngram(g)).collect()
             };
-            let hist_set: std::collections::HashSet<_> = hist_ngrams.iter().collect();
+            let hist_set: std::collections::HashSet<_> = hist_hashes.iter().collect();
 
             if output_set.is_empty() || hist_set.is_empty() {
                 continue;

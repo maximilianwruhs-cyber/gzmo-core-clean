@@ -15,7 +15,7 @@ fn main() {
     // Simulate some activity
     for i in 0..5 {
         // Simulate generation
-        telemetry.record_generation(100 + i * 10, 500 + i * 50);
+        telemetry.record_generation(100 + i * 10, (500 + i * 50) as u64);
 
         // Record some parameter correlations
         telemetry.record_correlation("temperature", 0.7 + i as f64 * 0.05, 0.8);
